@@ -1,23 +1,26 @@
 # PromptPace development log
 
-## Current status (as of 2026-09-30, end of session 1)
+## Current status (as of 2026-09-30, end of session 2)
 
-- **Works locally and fully tested**: 46 automated tests pass, ruff is clean, and the app was
-  checked in Chrome (light, dark, and 390 px phone width).
-- **Not yet deployed to EC2.** The deploy files are written, but nothing has been run on the
-  server. See "Deploy checklist" below.
-- **Git**: the repo was initialized at the end of session 1 with everything committed on `main`.
-  There is no remote yet.
-- **uv is not installed on this Mac.** Development used a plain venv (`.venv`). `uv.lock` doesn't
-  exist yet; running `uv sync` once will create it (then commit it).
-- The local dev DB (`data/promptpace.db`, gitignored) was reset to empty at the end of the session.
+- **Live** at https://typing.dustincremascoli.com on the EC2 box (systemd `promptpace`, 2 uvicorn
+  workers on a unix socket, PostgreSQL `promptpace` database, Let's Encrypt HTTPS). See
+  "Deploy checklist" below for what was done on the server.
+- **Tests**: 50 pass (needs local Postgres), ruff and `node --check` are clean.
+- **Git**: `main` is pushed to the public repo github.com/dcremas/promptpace. Keep host IPs, key
+  paths and passwords out of it.
+- **Footer row is eight links** (Main site, Data Viz, SQL Explorer, Weather API, Football SQL,
+  Play Explorer, PromptPace, Recipes), matching `ec2-nginx/prosite_flask/content.py` SITES. The
+  change is merged and pushed in every estate repo; the production deploys are run by the owner
+  (see the last item of the deploy checklist).
+- The local dev DB is Postgres `promptpace` (Homebrew); `data/promptpace.db` is the old SQLite
+  file and can be deleted.
 
 ### How to resume
 
 ```bash
 cd ~/projects/typing
 .venv/bin/uvicorn app.main:app --reload     # open http://127.0.0.1:8000
-.venv/bin/pytest                            # expect 46 passed
+.venv/bin/pytest                            # expect 50 passed
 ```
 
 If the venv is ever lost: `python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
@@ -176,7 +179,16 @@ Full commands are in README.md, "Deploy to EC2 behind nginx".
       Network audit the same day: 5432 closed from the internet; SG allows 5432 only from the
       awk/ghcnh ETL Lambda SGs; nftables only from 172.31.0.0/16; pg_hba allows non-local logins
       only for awk_etl and ghcnh_etl over SSL; SSH key-only with fail2ban.
-- [ ] Add PromptPace to the "Everything here" footer and nav on the other dustincremascoli.com sites.
+- [x] Add PromptPace to the "Everything here" footer and nav on the other dustincremascoli.com
+      sites (2026-09-30). The row is now eight links on every copy (`ec2-nginx/check-footer-nav.sh`
+      reports all 7 agree; the typing and pbp copies are outside it). Merged to `main` and pushed
+      in typing, prosite_flask, recipes_flask, restapi_flask, weather-sql-explorer, weblog_flask
+      and pbp; ec2-nginx `main` is local only (no remote).
+- [ ] **Deploy the footer change** (owner runs these; auto mode blocks production deploys).
+      Previewed with `rsync -nc` on 2026-09-30: only the expected files change, nothing is
+      deleted. PromptPace needs just `app/static/index.html` (plus README/DEVLOG); `uv.lock` is
+      unchanged, so a restart is enough. prosite needs `--with-viz` because
+      `viz/_prosite_footer.py` changed.
 
 ## Environment snapshot (versions verified working)
 
