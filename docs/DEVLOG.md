@@ -171,6 +171,11 @@ Full commands are in README.md, "Deploy to EC2 behind nginx".
 - [x] `GRANT promptpace TO dustincremascoli` (2026-09-30), so the owner's pgAdmin login has full
       access. The app owns its tables (it creates them via migrations), unlike recipes/weatherdata,
       where dustincremascoli owns the tables and grants the app role access.
+- [x] `REVOKE CONNECT ON DATABASE promptpace FROM PUBLIC` (2026-09-30). Only promptpace,
+      dustincremascoli (via membership) and postgres can connect; a probe role was refused.
+      Network audit the same day: 5432 closed from the internet; SG allows 5432 only from the
+      awk/ghcnh ETL Lambda SGs; nftables only from 172.31.0.0/16; pg_hba allows non-local logins
+      only for awk_etl and ghcnh_etl over SSL; SSH key-only with fail2ban.
 - [ ] Add PromptPace to the "Everything here" footer and nav on the other dustincremascoli.com sites.
 
 ## Environment snapshot (versions verified working)

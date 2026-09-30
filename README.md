@@ -137,7 +137,11 @@ adds later:
 
 ```bash
 sudo -u postgres psql -c "GRANT promptpace TO dustincremascoli"
+sudo -u postgres psql -c "REVOKE CONNECT ON DATABASE promptpace FROM PUBLIC"
 ```
+
+The second line stops other login roles on the server from connecting to this database at all
+(by default any role may connect, though it couldn't read the tables).
 
 Change table structure through `MIGRATIONS` in `app/storage.py`, not by hand, so the app's
 migration history stays accurate.
