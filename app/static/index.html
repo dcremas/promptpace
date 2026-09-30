@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PromptPace</title>
+  <meta name="description" content="Measure how you type when writing prompts for an AI: overall WPM, burst speed, thinking pauses, and backspacing.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232a78d6'/><path d='M7 22h4V14H7zm7 0h4V9h-4zm7 0h4v-6h-4z' fill='white'/></svg>">
+  <link rel="stylesheet" href="static/styles.css">
+  <script type="module" src="static/app.js"></script>
+</head>
+<body>
+  <header class="site">
+    <div class="wrap">
+      <h1>PromptPace</h1>
+      <p class="tagline">How fast do you write prompts, and where does the time go?</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card task" aria-labelledby="task-heading">
+      <div class="task-head">
+        <h2 id="task-heading" class="eyebrow">Your task <span id="task-category" class="chip"></span></h2>
+        <button id="new-task" class="btn ghost" type="button">New task</button>
+      </div>
+      <p id="task-text" class="task-text">Loading…</p>
+    </section>
+
+    <section class="card editor" aria-label="Write your prompt">
+      <textarea id="response" rows="9" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" disabled
+        placeholder="Write the prompt you'd send to the AI. The timer starts on your first keystroke."></textarea>
+      <div class="editor-bar">
+        <div class="live" aria-live="off">
+          <span><b id="live-time">0:00</b> elapsed</span>
+          <span><b id="live-words">0</b> words</span>
+          <span id="live-state" class="live-state">Waiting for your first keystroke</span>
+        </div>
+        <div class="actions">
+          <button id="reset" class="btn ghost" type="button">Start over</button>
+          <button id="finish" class="btn primary" type="button" disabled>
+            Finish &amp; analyze <kbd class="kbd">⌘/Ctrl ↵</kbd>
+          </button>
+        </div>
+      </div>
+      <p id="error" class="error" role="alert" hidden></p>
+    </section>
+
+    <section id="results" class="results" hidden aria-labelledby="results-heading">
+      <div class="results-head">
+        <div>
+          <h2 id="results-heading">Your results</h2>
+          <p id="results-prompt" class="muted small"></p>
+        </div>
+        <label class="threshold">
+          Count gaps as pauses from
+          <select id="threshold">
+            <option value="1000">1 s</option>
+            <option value="1500">1.5 s</option>
+            <option value="2000" selected>2 s</option>
+            <option value="3000">3 s</option>
+            <option value="5000">5 s</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="tiles">
+        <article class="tile">
+          <h3>Overall speed</h3>
+          <p class="value"><span id="m-overall">–</span><small>WPM</small></p>
+          <p class="sub" id="m-overall-sub"></p>
+        </article>
+        <article class="tile">
+          <h3>Burst speed</h3>
+          <p class="value"><span id="m-burst">–</span><small>WPM</small></p>
+          <p class="sub" id="m-burst-sub"></p>
+        </article>
+        <article class="tile">
+          <h3>Time paused to think</h3>
+          <p class="value"><span id="m-pause">–</span></p>
+          <p class="sub" id="m-pause-sub"></p>
+        </article>
+        <article class="tile">
+          <h3>Spelling accuracy</h3>
+          <p class="value"><span id="m-acc">–</span></p>
+          <p class="sub" id="m-acc-sub"></p>
+        </article>
+        <article class="tile">
+          <h3>Backspacing</h3>
+          <p class="value"><span id="m-back">–</span><small>per 100 keys</small></p>
+          <p class="sub" id="m-back-sub"></p>
+        </article>
+      </div>
+
+      <div class="card review">
+        <div class="review-head">
+          <h3>Review your writing</h3>
+          <p id="review-summary" class="review-summary"></p>
+        </div>
+        <p id="written" class="written"></p>
+        <ul id="issue-list" class="issue-list"></ul>
+        <details class="dict">
+          <summary>Your dictionary (<span id="dict-count">0</span>)</summary>
+          <p class="muted small">Words you add here are never flagged in this browser, including in past sessions.</p>
+          <ul id="dict-list" class="dict-list"></ul>
+        </details>
+      </div>
+
+      <div class="card insights">
+        <h3>What this means</h3>
+        <ul id="insights"></ul>
+      </div>
+
+      <div class="card chart-card">
+        <div class="chart-head">
+          <div>
+            <h3>Typing rhythm</h3>
+            <p class="muted small">Words per minute over time, measured from your first keystroke. Hover a column for details.</p>
+          </div>
+          <ul class="legend" aria-label="Legend">
+            <li><span class="key key-bar"></span>Typing speed</li>
+            <li><span class="key key-dot"></span>Deletions</li>
+            <li><span class="key key-pause"></span>Pause</li>
+          </ul>
+        </div>
+        <div id="chart" class="chart"></div>
+        <div id="tooltip" class="tooltip" role="status" hidden></div>
+        <details class="table-view">
+          <summary>View as table</summary>
+          <div class="table-scroll"><table id="chart-table"></table></div>
+        </details>
+      </div>
+
+      <div class="split">
+        <div class="card">
+          <h3>Pause lengths</h3>
+          <ul id="pause-bands" class="bands"></ul>
+        </div>
+        <div class="card">
+          <h3>Session details</h3>
+          <dl id="details" class="details"></dl>
+        </div>
+      </div>
+    </section>
+
+    <section class="card history" aria-labelledby="history-heading">
+      <h2 id="history-heading">History</h2>
+      <p id="history-empty" class="muted small">Sessions you finish in this browser show up here.</p>
+      <div class="table-scroll">
+        <table id="history" hidden>
+          <thead>
+            <tr><th>When</th><th>Task</th><th class="num">Overall</th><th class="num">Burst</th>
+              <th class="num">Paused</th><th class="num">Backspaces / 100</th><th class="num">Spelling</th><th><span class="sr">Actions</span></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap muted small">
+    A “word” is 5 characters. Burst speed counts only the time between keystrokes that are closer together than the pause threshold. Pasted text is excluded from typing speed. Browser spell-check is off while you type, like a typing test, so spelling accuracy reflects you. Net WPM subtracts one word for each misspelling left in your final text.
+  </footer>
+</body>
+</html>

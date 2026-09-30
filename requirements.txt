@@ -1,0 +1,7 @@
+# Pinned runtime dependencies, verified working on 2026-09-30 with Python 3.14.7.
+# pyproject.toml is the source of truth (and `uv sync` is the preferred install);
+# this file is a pip fallback: pip install -r requirements.txt
+fastapi==0.142.2
+pydantic==2.13.5
+symspellpy==6.10.0
+uvicorn[standard]==0.54.0
