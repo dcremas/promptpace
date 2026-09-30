@@ -70,7 +70,7 @@ function resetRecording() {
   ui.input.disabled = !state.prompt;
   ui.input.readOnly = false;
   ui.finish.disabled = true;
-  ui.liveState.textContent = "Waiting for your first keystroke";
+  setStatus("Waiting for your first keystroke", "idle");
   showError(null);
   updateLive();
   ui.input.focus();
@@ -109,7 +109,7 @@ ui.input.addEventListener("input", (e) => {
   state.events.push({ t: Math.round(t * 10) / 10, kind, added, removed });
 
   if (state.events.length === 1) {
-    ui.liveState.textContent = "Recording";
+    setStatus("Recording", "recording");
     clearInterval(state.ticker);
     state.ticker = setInterval(updateLive, 250);
   }
@@ -117,12 +117,26 @@ ui.input.addEventListener("input", (e) => {
   updateLive();
 });
 
+// Enter finishes, like sending a message in an AI chat box; Shift+Enter adds a line break.
+// preventDefault means no input event fires, so the timing still ends at the last real edit.
+// On touch screens Return stays a line break (as in mobile chat apps) unless ⌘/Ctrl is held.
+const touchOnly = matchMedia("(hover: none) and (pointer: coarse)").matches;
+if (touchOnly) {
+  ui.input.placeholder =
+    "Write the prompt you'd send to the AI. The timer starts on your first keystroke. Tap Finish when you're done.";
+}
 ui.input.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-    e.preventDefault();
-    if (!ui.finish.disabled) finish();
-  }
+  if (e.key !== "Enter" || e.shiftKey || e.altKey || e.isComposing) return;
+  if (touchOnly && !e.metaKey && !e.ctrlKey) return;
+  e.preventDefault();
+  if (!ui.finish.disabled) finish();
 });
+
+// The mode drives the status light's color (see .live-state in styles.css).
+function setStatus(text, mode) {
+  ui.liveState.textContent = text;
+  ui.liveState.dataset.state = mode;
+}
 
 function updateLive() {
   const first = state.events[0];
@@ -143,7 +157,7 @@ async function finish() {
   clearInterval(state.ticker);
   ui.input.readOnly = true;
   ui.finish.disabled = true;
-  ui.liveState.textContent = "Analyzing…";
+  setStatus("Analyzing…", "busy");
   updateLive();
   try {
     const session = await api("sessions", {
@@ -155,14 +169,14 @@ async function finish() {
         pause_threshold_ms: Number(ui.threshold.value),
       }),
     });
-    ui.liveState.textContent = "Done. Pick a new task or start over to go again.";
+    setStatus("Done. Timing stopped at your last keystroke.", "done");
     renderSession(session);
     loadHistory();
   } catch (err) {
     state.finished = false;
     ui.input.readOnly = false;
     ui.finish.disabled = false;
-    ui.liveState.textContent = "Recording";
+    setStatus("Recording", "recording");
     showError(err);
   }
 }
@@ -239,7 +253,13 @@ function renderSession(session, { scroll = true } = {}) {
   renderChart(a);
   renderChartTable(a);
   markCurrentHistoryRow();
-  if (scroll) ui.results.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (scroll) {
+    // Restart the entrance animation for a fresh result (void forces a reflow).
+    ui.results.classList.remove("reveal");
+    void ui.results.offsetWidth;
+    ui.results.classList.add("reveal");
+    ui.results.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function renderBands(buckets) {

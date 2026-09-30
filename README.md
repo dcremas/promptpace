@@ -28,7 +28,8 @@ separately, and pasted text is left out of the speed numbers.
 - **Python 3.14** (3.13+ supported), **FastAPI** + **Pydantic v2**, served by **uvicorn**
 - **symspellpy** for spell-checking (Symmetric Delete algorithm, 83k-word frequency dictionary,
   about 44 MB of memory per worker)
-- **SQLite** (stdlib, WAL mode) for session history. No database server needed
+- **PostgreSQL** (its own `promptpace` database) via **psycopg 3** with a connection pool.
+  The schema is created and migrated automatically at startup
 - Plain HTML/CSS/JS frontend (no build step, no CDN), with the chart drawn as inline SVG
 - **uv** for dependencies, **ruff** for lint/format, **pytest** for tests
 
@@ -40,7 +41,7 @@ app/
   prompts.py   the task bank (edit to add your own)
   spelling.py  spell-check and mechanics rules
   data/extra_words.txt  modern words the base dictionary lacks (async, onboarding, emoji, ...)
-  storage.py   SQLite persistence
+  storage.py   PostgreSQL persistence and schema migrations
   static/      index.html, styles.css, app.js
 deploy/        nginx site + systemd unit
 tests/
@@ -59,9 +60,19 @@ Or with plain pip:
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/pip install fastapi pydantic "uvicorn[standard]" symspellpy pytest httpx2 ruff
+.venv/bin/pip install -r requirements.txt pytest httpx2 ruff
 .venv/bin/uvicorn app.main:app --reload
 ```
+
+It needs a local PostgreSQL with two databases, one for the app and a scratch one the tests wipe:
+
+```bash
+createdb promptpace
+createdb promptpace_test
+```
+
+The tables are created on first start. Point elsewhere with `PROMPTPACE_DATABASE_URL` and
+`PROMPTPACE_TEST_DATABASE_URL` (the tests refuse any database whose name doesn't end in `_test`).
 
 Open http://127.0.0.1:8000. Interactive API docs are at `/api/docs`.
 
@@ -72,17 +83,19 @@ uv run ruff check .
 
 ## Deploy to EC2 behind nginx
 
-These steps assume Ubuntu with nginx already installed. Notes for Amazon Linux are below.
+These steps match the production box: **Amazon Linux 2023**, nginx running as `nginx` with sites
+in `/etc/nginx/conf.d/`, PostgreSQL 16 on the same machine, and certbot.
 
 **1. Create a service user and copy the code**
 
 ```bash
 # on the server
-sudo useradd --system --home /opt/promptpace --shell /usr/sbin/nologin promptpace
-sudo mkdir -p /opt/promptpace && sudo chown $USER /opt/promptpace
+sudo useradd --system --home-dir /opt/promptpace --shell /sbin/nologin promptpace
+sudo mkdir -p /opt/promptpace && sudo chown ec2-user /opt/promptpace
 
 # from your machine
-rsync -av --exclude .venv --exclude /data --exclude '__pycache__' ./ ubuntu@YOUR_EC2:/opt/promptpace/
+rsync -av --exclude .venv --exclude /data --exclude __pycache__ --exclude .git \
+  --exclude .pytest_cache --exclude .ruff_cache --exclude .DS_Store ./ awsvm:/opt/promptpace/
 ```
 
 **2. Install Python 3.14 and dependencies with uv**
@@ -93,57 +106,77 @@ Keep uv's Python inside `/opt/promptpace` so the sandboxed service can read it:
 curl -LsSf https://astral.sh/uv/install.sh | sh
 cd /opt/promptpace
 UV_PYTHON_INSTALL_DIR=/opt/promptpace/.python ~/.local/bin/uv sync --no-dev --python 3.14
-sudo chown -R promptpace:www-data /opt/promptpace
 ```
 
-**3. Start the app with systemd**
+The code stays owned by `ec2-user` (so later rsyncs work) and world-readable; the service only
+reads it. The one secret, the database password, lives in `/etc/promptpace` (step 3).
+
+**3. Create its database and connection file**
+
+The app has its own role and database. The server's `pg_hba.conf` requires a password for
+every local role except `postgres`, so the role gets a random password that lives only in a
+root-owned env file (the same pattern as `/etc/recipes/recipes.env`):
+
+```bash
+sudo -u postgres createuser promptpace
+sudo -u postgres createdb --owner promptpace promptpace
+
+PW=$(openssl rand -hex 24)     # hex, so it needs no URL escaping
+printf "ALTER ROLE promptpace PASSWORD '%s';\n" "$PW" | sudo -u postgres psql -X -q
+sudo install -d -m 0750 -o root -g promptpace /etc/promptpace
+printf 'PROMPTPACE_DATABASE_URL=postgresql://promptpace:%s@/promptpace?host=/var/run/postgresql\n' "$PW" \
+  | sudo tee /etc/promptpace/promptpace.env >/dev/null
+sudo chown root:promptpace /etc/promptpace/promptpace.env
+sudo chmod 0640 /etc/promptpace/promptpace.env
+unset PW
+```
+
+`deploy/promptpace.env.example` shows the file's format. The app creates its tables on first
+start. The nightly `pg-backup` job dumps every database, so `promptpace` is backed up with no
+extra setup.
+
+**4. Start the app with systemd**
 
 ```bash
 sudo cp deploy/promptpace.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now promptpace
 systemctl status promptpace          # should be "active (running)"
+sudo curl -s --unix-socket /run/promptpace/uvicorn.sock http://x/healthz
 ```
 
-uvicorn listens on the unix socket `/run/promptpace/uvicorn.sock`. The database lives at
-`/var/lib/promptpace/promptpace.db`.
+The health check prints `{"status":"ok"}`, or returns 503 if the app can't reach Postgres
+(`journalctl -u promptpace -n 50` shows why).
 
-**4. Point nginx at it**
-
-Edit `server_name` in `deploy/nginx.conf`, then:
+**5. Point nginx at it**
 
 ```bash
-sudo cp deploy/nginx.conf /etc/nginx/sites-available/promptpace
-sudo ln -s /etc/nginx/sites-available/promptpace /etc/nginx/sites-enabled/
+sudo certbot certonly --webroot -w /var/www/letsencrypt -d typing.dustincremascoli.com
+sudo cp deploy/nginx.conf /etc/nginx/conf.d/promptpace.conf
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d typing.example.com   # HTTPS (recommended)
 ```
 
-Make sure the EC2 security group allows inbound 80/443.
+`deploy/nginx.conf` already contains the HTTPS server block, so on a fresh box get the
+certificate first. That needs a port-80 server answering `/.well-known/acme-challenge/` from
+`/var/www/letsencrypt`, which is how every site on this box is set up. The live certificate was
+issued with `certbot --nginx` and renews automatically via `certbot-renew.timer`.
+
+Add a DNS record for `typing.dustincremascoli.com` pointing at the server before running
+certbot. The security group already allows 80/443 for the other sites.
 
 The service sets `PROMPTPACE_SECURE_COOKIES=1`, which marks the history cookie as HTTPS-only.
 If you run over plain HTTP for a while, remove that line from the unit file or history won't
 persist between page loads.
 
 **Updating later:** rsync the code again, run `uv sync --no-dev`, then
-`sudo systemctl restart promptpace`.
-
-**Amazon Linux 2023:** nginx runs as `nginx` (not `www-data`) and there is no
-`sites-available` or `proxy_params`. Set `Group=nginx` in the unit file, put the site in
-`/etc/nginx/conf.d/promptpace.conf`, and replace each `include /etc/nginx/proxy_params;` with:
-
-```nginx
-proxy_set_header Host $host;
-proxy_set_header X-Real-IP $remote_addr;
-proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-proxy_set_header X-Forwarded-Proto $scheme;
-```
+`sudo systemctl restart promptpace`. Schema changes apply themselves on start.
 
 ## Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PROMPTPACE_DB` | `./data/promptpace.db` | SQLite file path |
+| `PROMPTPACE_DATABASE_URL` | `postgresql:///promptpace` | libpq URL of the app database |
+| `PROMPTPACE_TEST_DATABASE_URL` | `postgresql:///promptpace_test` | database the tests wipe (name must end in `_test`) |
 | `PROMPTPACE_SECURE_COOKIES` | `0` | `1` marks the history cookie as HTTPS-only |
 
 ## How spell-checking works

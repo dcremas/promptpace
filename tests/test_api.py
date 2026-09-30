@@ -2,13 +2,16 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main
-from app.storage import Store
+from tests.conftest import fresh_store, wipe
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(main, "store", Store(tmp_path / "test.db"))
+def client(monkeypatch):
+    store = fresh_store()
+    monkeypatch.setattr(main, "store", store)
+    # The app's lifespan opens (and at exit closes) the store; wipe it once it's open.
     with TestClient(main.app) as c:
+        wipe(store)
         yield c
 
 
@@ -24,6 +27,17 @@ def test_index_and_static(client):
     assert "PromptPace" in client.get("/").text
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/healthz").json() == {"status": "ok"}
+
+
+def test_index_versions_assets_and_is_never_stale(client):
+    res = client.get("/")
+    assert res.headers["cache-control"] == "no-cache"
+    for name in main.VERSIONED_ASSETS:
+        assert f"static/{name}?v=" in res.text
+        assert f'static/{name}"' not in res.text
+    # Monitors and link previews send HEAD.
+    assert client.head("/").status_code == 200
+    assert client.head("/healthz").status_code == 200
 
 
 def test_random_prompt_respects_exclude(client):

@@ -84,12 +84,17 @@ spelling, 4 mechanics), with zero false positives on "Dmitri", "Houzz", "counter
 | uvicorn behind nginx on a unix socket | Standard, reliable with nginx; no open port | Granian (newer, less proven with this setup) |
 | Metrics computed server-side in pure functions | Re-analysis at any threshold; testable; the "Python" part is real | JS-only metrics |
 | Record `input` events, not `keydown` | Correct for word-delete, selection replace, IME, autocorrect, paste | keydown, which miscounts those |
-| SQLite (stdlib) | Zero ops on a single VM | Postgres (overkill) |
+| PostgreSQL, own `promptpace` database (was SQLite until 2026-09-30) | The owner already runs and backs up Postgres on the VM for their other sites; one database to operate, and the data can be queried alongside the other apps | Keeping SQLite plus a separate backup job |
+| psycopg 3 pool + numbered migrations in storage.py, run under an advisory lock | Two workers start at once; no ORM or Alembic needed for three tables | SQLAlchemy + Alembic (heavy for this) |
 | Anonymous cookie, no accounts | Private history without sign-up | Auth (not requested) |
 | symspellpy, `prefix_length=5` | Best suggestions (29/30 top-1 in a trial), 0.2 ms/word, 44 MB | pyspellchecker (136 ms/word, worse ranking); LanguageTool (Java, ~1 GB RAM) |
 | Supplemental word list over the pyspellchecker vocabulary | The extra 80k words were obscure (would let typos pass) and still missed modern words | Union of both dictionaries |
 | Count only words with a close suggestion | Unmatched words are usually jargon or names; keeps the score fair | Flag every unknown word |
 | Mechanics issues shown but not scored | People write prompts casually; don't penalize style | Folding them into accuracy |
+| Enter finishes a test; Shift+Enter is a newline (⌘/Ctrl+Enter also works) | Matches AI chat boxes; reaching for the mouse broke flow. Timing already ends at the last edit, so the click never counted | ⌘/Ctrl+Enter only (hint on the button was easy to miss) |
+| Content-hashed asset URLs, index sent `no-cache`, `/static/` cached 1 year | Browsers heuristically cached styles.css with no revalidation, so a refresh paired new HTML with old CSS | Short `expires` (still stale for up to an hour after a deploy) |
+| Footer and header byline mirror the other dustincremascoli.com sites | The owner wants every property to read as one portfolio | A one-off credit line |
+| No footer link to /api/docs | Production CSP blocks Swagger UI's CDN scripts, so the page would render blank | Loosening CSP for one page |
 | Browser spell-check off while typing | Matches typing-test convention; the score reflects the user | Leaving squiggles on (a one-attribute revert in index.html) |
 
 ## Spell-checker evaluation data (for tuning later)
@@ -139,24 +144,37 @@ A trial with 30 common typos and about 200 words of clean prompt text:
 
 Full commands are in README.md, "Deploy to EC2 behind nginx".
 
-- [ ] Find out the server OS (Ubuntu vs Amazon Linux 2023). The README has notes for both;
-      Amazon Linux needs `Group=nginx` and inline proxy headers.
-- [ ] Choose a domain or subdomain and set `server_name` in `deploy/nginx.conf`.
-- [ ] Create the `promptpace` system user and `/opt/promptpace`; rsync the code (exclude .venv
-      and /data, with the leading slash, or `app/data/` gets skipped too).
-- [ ] Install uv and run `UV_PYTHON_INSTALL_DIR=/opt/promptpace/.python uv sync --no-dev
-      --python 3.14`.
-- [ ] Install and start `deploy/promptpace.service`. It runs 2 uvicorn workers on
-      `/run/promptpace/uvicorn.sock`, and the DB is at `/var/lib/promptpace/promptpace.db`.
-- [ ] Install the nginx site, run `nginx -t`, and reload.
-- [ ] Open ports 80/443 in the security group; run `certbot --nginx -d <domain>`.
-- [ ] Keep `PROMPTPACE_SECURE_COOKIES=1` only once HTTPS works (otherwise history won't persist).
-- [ ] Memory budget: about 44 MB for the dictionary plus about 40 MB base per worker, so roughly
-      170 MB for 2 workers. Fine on a t3.micro (1 GB).
+- [x] Server OS: Amazon Linux 2023 (checked over `ssh awsvm` on 2026-09-30). nginx user `nginx`,
+      sites in /etc/nginx/conf.d/, no proxy_params, certbot installed. Postgres 16.15.
+- [x] Domain: typing.dustincremascoli.com (needs a DNS record before certbot).
+- [x] Role `promptpace` and database `promptpace` (owner promptpace, UTF8, C) created by the owner.
+- [x] Backups: the box's nightly `pg-backup` (03:18 UTC, to S3) dumps every database and all roles.
+- [x] README steps 1-3 run on 2026-09-30: system user `promptpace` (uid 983), code in
+      /opt/promptpace (owned by ec2-user), uv 0.12.21 + Python 3.14.7 venv, role password set,
+      /etc/promptpace/promptpace.env (root:promptpace 0640). Verified: the service user connects
+      over the socket and can create tables. pg_hba.conf needs scram for local roles, hence the
+      password. uv.lock came from that server sync.
+- [x] Service installed and running (2026-09-30): 2 workers, ~212 MB total (box has 3.8 GB),
+      migration 1 applied once, save/history/re-analyze/delete verified over the socket.
+- [x] nginx site at /etc/nginx/conf.d/promptpace.conf; `nginx -t` passed; reloaded. www/recipes/
+      sql/api returned 200 before and after. DNS already resolves typing. to the box.
+- [x] Certificate preflight (2026-09-30): own A record at GoDaddy (no wildcard), no AAAA, no CAA;
+      port 80 public; shared webroot /var/www/letsencrypt location added (matches the other
+      sites) and verified from outside; `certbot certonly --webroot --dry-run` succeeded;
+      certbot-renew.timer active.
+- [x] HTTPS live (2026-09-30): Let's Encrypt cert (issuer YE2) valid to 2026-12-29, renewed by
+      certbot-renew.timer (`certbot renew --dry-run` passed). deploy/nginx.conf is now the exact
+      live file: port-80 block (acme webroot + 301), 443 block with http2 + HSTS like the other
+      sites. Backups of the earlier versions sit next to it in conf.d as *.bak-* (not loaded).
+      Browser check over HTTPS: session saved, History survived a reload, deleted; prod DB empty. Until then HTTP works but History
+      doesn't persist, because the cookie is `Secure`.
+- [ ] Add PromptPace to the "Everything here" footer and nav on the other dustincremascoli.com sites.
 
 ## Environment snapshot (versions verified working)
 
 - macOS (Darwin 25.6), zsh, Python 3.14.7 (pyenv), Node available (used only for `node --check`)
+- PostgreSQL 18.6 (Homebrew) locally, databases `promptpace` and `promptpace_test`
+- psycopg 3.3.6 (binary, libpq 18) · psycopg-pool 3.3.3
 - fastapi 0.142.2 · starlette 1.7.0 · pydantic 2.13.5 · uvicorn 0.54.0 (uvloop 0.22.1,
   httptools 0.8.0, watchfiles 1.3.0, websockets 17.1) · symspellpy 6.10.0
 - Dev tools: pytest 9.1.1 · httpx2 2.13.1 · ruff 0.16.9

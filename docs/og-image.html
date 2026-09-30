@@ -1,0 +1,79 @@
+<!-- Source for app/static/og.png (the 1200x630 link-preview image). Regenerate with:
+     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless --hide-scrollbars \
+       --force-device-scale-factor=1 --window-size=1200,630 \
+       --screenshot="$PWD/app/static/og.png" "file://$PWD/docs/og-image.html" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PromptPace share image</title>
+<style>
+  :root { --bg: #f6f5f2; --surface: #fcfcfb; --border: #e2e0da; --text: #0b0b0b; --text-2: #52514e;
+    --muted: #74726c; --accent: #2a78d6; --accent-ink: #1c5cab; --s2: #eb6834; --pause: #ebe9e3; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; color: var(--text);
+    background: var(--bg) radial-gradient(rgb(0 0 0 / 0.06) 1.2px, transparent 1.6px) 0 0 / 26px 26px;
+    position: relative;
+  }
+  .strip { position: absolute; inset: 0 0 auto; height: 10px;
+    background: linear-gradient(90deg, var(--accent) 0 60%, var(--s2)); }
+  .inner { position: absolute; inset: 70px 80px 60px; display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 20px; }
+  .brand svg { width: 76px; height: 76px; }
+  .brand svg rect { fill: var(--accent); }
+  .brand svg path { fill: #fff; }
+  .word { font-size: 64px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+  .word span { color: var(--accent); }
+  .by { font-size: 24px; color: var(--muted); margin-top: 6px; font-weight: 500; }
+  h1 { margin-top: 44px; font-size: 46px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; max-width: 900px; }
+  .panel { margin-top: auto; display: flex; align-items: flex-end; gap: 36px; }
+  .chart { flex: 1; height: 150px; display: flex; align-items: flex-end; gap: 7px;
+    padding: 18px 22px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+    box-shadow: 0 4px 22px rgb(0 0 0 / 0.05); }
+  .bar { flex: 1; background: var(--accent); border-radius: 4px 4px 0 0; }
+  .gap { flex: 3; align-self: stretch; background: var(--pause); border-radius: 6px; }
+  .tiles { display: flex; gap: 14px; }
+  .tile { width: 170px; padding: 18px 20px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 18px; box-shadow: 0 4px 22px rgb(0 0 0 / 0.05); position: relative; overflow: hidden; }
+  .tile.hl::before { content: ""; position: absolute; inset: 0 0 auto; height: 5px; background: var(--accent); }
+  .tile b { display: block; font-size: 50px; font-weight: 750; letter-spacing: -0.03em; line-height: 1; }
+  .tile.hl b { color: var(--accent-ink); }
+  .tile small { display: block; margin-top: 8px; font-size: 19px; color: var(--text-2); font-weight: 550; }
+  .url { position: absolute; right: 80px; top: 92px; font-size: 22px; color: var(--muted); font-weight: 550; }
+</style>
+</head>
+<body>
+  <div class="strip"></div>
+  <div class="url">typing.dustincremascoli.com</div>
+  <div class="inner">
+    <div class="brand">
+      <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="7"/><path d="M7 22h4V14H7zm7 0h4V9h-4zm7 0h4v-6h-4z"/></svg>
+      <div>
+        <div class="word">Prompt<span>Pace</span></div>
+        <div class="by">by Dustin Cremascoli</div>
+      </div>
+    </div>
+    <h1>How fast do you write prompts, and where does the time go?</h1>
+    <div class="panel">
+      <div class="chart" id="chart"></div>
+      <div class="tiles">
+        <div class="tile hl"><b>67</b><small>WPM overall</small></div>
+        <div class="tile"><b>72</b><small>WPM burst</small></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    // A fixed, typing-like rhythm: bursts with one thinking pause.
+    const h = [62, 80, 55, 92, 70, 48, 85, 66, 74, 0, 58, 88, 95, 72, 60, 83, 50, 77, 90, 64, 70, 45];
+    const chart = document.getElementById("chart");
+    for (const v of h) {
+      const d = document.createElement("div");
+      d.className = v ? "bar" : "gap";
+      if (v) d.style.height = v + "%";
+      chart.append(d);
+    }
+  </script>
+</body>
+</html>

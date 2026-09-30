@@ -3,14 +3,17 @@
 #          sudo systemctl daemon-reload && sudo systemctl enable --now promptpace
 [Unit]
 Description=PromptPace typing-rhythm web app
-After=network.target
+After=network.target postgresql.service
+Wants=postgresql.service
 
 [Service]
 Type=exec
 User=promptpace
-Group=www-data
+Group=nginx
 WorkingDirectory=/opt/promptpace
-Environment=PROMPTPACE_DB=/var/lib/promptpace/promptpace.db
+# PROMPTPACE_DATABASE_URL (with the role's password) lives here, readable by root and this
+# service only. Format: deploy/promptpace.env.example. Setup: README, "Deploy", step 3.
+EnvironmentFile=/etc/promptpace/promptpace.env
 Environment=PROMPTPACE_SECURE_COOKIES=1
 # Listens on a unix socket that nginx proxies to. `--proxy-headers` trusts
 # X-Forwarded-* from nginx so client IPs and https scheme are correct.
@@ -21,7 +24,6 @@ ExecStart=/opt/promptpace/.venv/bin/uvicorn app.main:app \
     --no-server-header
 RuntimeDirectory=promptpace
 RuntimeDirectoryMode=0750
-StateDirectory=promptpace
 UMask=0007
 Restart=on-failure
 RestartSec=3
@@ -31,7 +33,6 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/promptpace
 
 [Install]
 WantedBy=multi-user.target

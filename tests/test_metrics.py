@@ -19,6 +19,16 @@ def test_steady_typing_has_no_pauses():
     assert s.overall_wpm == 60.2
 
 
+def test_no_pause_insight_does_not_say_zero_percent():
+    notes = analyze(typing(1000, 300, 200), "x" * 300).insights
+    assert notes[0].startswith("You never paused.")
+    # A pause too short to round to 1% still reads as "Only 1%", never "Only 0%".
+    # One 2.1 s pause in about 482 s of writing is 0.4%.
+    events = typing(0, 1200, 200) + typing(239_800 + 2_100, 1200, 200)
+    notes = analyze(events, "x" * 2400).insights
+    assert notes[0].startswith("Only 1% of your time")
+
+
 def test_pause_splits_bursts_and_lowers_overall_only():
     first = typing(0, 100, 200)  # ends at 19.8 s
     second = typing(29_800, 100, 200)  # 10 s gap, then another burst

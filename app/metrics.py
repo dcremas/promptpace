@@ -200,10 +200,15 @@ def _insights(s: Summary, acc: Accuracy) -> list[str]:
             f"About {pause_pct}% of your time went to pauses. That's a healthy mix of "
             "thinking and typing."
         )
+    elif s.pause_count == 0:
+        notes.append(
+            "You never paused. You typed straight through, so typing speed decides how "
+            "long prompts take you."
+        )
     else:
         notes.append(
-            f"Only {pause_pct}% of your time was spent paused. You mostly typed straight "
-            "through, so typing speed has a real effect on how long prompts take you."
+            f"Only {max(pause_pct, 1)}% of your time was spent paused. You mostly typed "
+            "straight through, so typing speed has a real effect on how long prompts take you."
         )
 
     if s.burst_wpm and s.active_seconds > 0:

@@ -1,5 +1,6 @@
 """PromptPace: a typing-rhythm coach for prompt writing."""
 
+import hashlib
 import os
 import random
 import re
@@ -10,7 +11,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi import Path as PathParam
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import spelling
@@ -20,13 +21,17 @@ from app.prompts import PROMPTS
 from app.storage import Store
 
 STATIC_DIR = Path(__file__).parent / "static"
-DEFAULT_DB = Path(__file__).parent.parent / "data" / "promptpace.db"
-DB_PATH = Path(os.environ.get("PROMPTPACE_DB", DEFAULT_DB))
+# libpq URL. The default reaches a local Postgres as the current OS user (fine for development);
+# production sets it in deploy/promptpace.service.
+DATABASE_URL = os.environ.get("PROMPTPACE_DATABASE_URL", "postgresql:///promptpace")
 SECURE_COOKIES = os.environ.get("PROMPTPACE_SECURE_COOKIES", "0") == "1"
 COOKIE = "pp_cid"
 COOKIE_RE = re.compile(r"^[0-9a-f]{32}$")
+# Assets index.html links to. Each gets a ?v=<content hash> so a browser never pairs fresh
+# HTML with a stale cached stylesheet or script, and the files themselves can be cached for good.
+VERSIONED_ASSETS = ("styles.css", "app.js", "og.png")
 
-store = Store(DB_PATH)
+store = Store(DATABASE_URL)
 
 
 @asynccontextmanager
@@ -34,6 +39,7 @@ async def lifespan(_: FastAPI):
     store.init()
     spelling.warm()
     yield
+    store.close()
 
 
 app = FastAPI(
@@ -68,13 +74,35 @@ Threshold = Annotated[int, Query(ge=500, le=10_000)]
 Word = Annotated[str, PathParam(pattern=r"^[A-Za-z][A-Za-z'’-]{0,39}$")]
 
 
-@app.get("/", include_in_schema=False)
-def index() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+_index_cache: tuple[tuple[float, ...], str] | None = None
 
 
-@app.get("/healthz", include_in_schema=False)
-def healthz() -> dict[str, str]:
+def _index_html() -> str:
+    """index.html with versioned asset URLs, rebuilt only when one of the files changes."""
+    global _index_cache
+    files = [STATIC_DIR / "index.html", *(STATIC_DIR / name for name in VERSIONED_ASSETS)]
+    mtimes = tuple(f.stat().st_mtime for f in files)
+    if _index_cache is None or _index_cache[0] != mtimes:
+        html = files[0].read_text(encoding="utf-8")
+        for name, path in zip(VERSIONED_ASSETS, files[1:], strict=True):
+            version = hashlib.sha256(path.read_bytes()).hexdigest()[:10]
+            # Matches relative links and the absolute og:image URL alike.
+            html = html.replace(f'static/{name}"', f'static/{name}?v={version}"')
+        _index_cache = (mtimes, html)
+    return _index_cache[1]
+
+
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+def index() -> HTMLResponse:
+    # no-cache = revalidate every time, so a deploy shows up on the next page load.
+    return HTMLResponse(_index_html(), headers={"Cache-Control": "no-cache"})
+
+
+@app.api_route("/healthz", methods=["GET", "HEAD"], include_in_schema=False)
+def healthz(response: Response) -> dict[str, str]:
+    if not store.ping():
+        response.status_code = 503
+        return {"status": "database unavailable"}
     return {"status": "ok"}
 
 
