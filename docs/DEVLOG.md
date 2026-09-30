@@ -9,9 +9,8 @@
 - **Git**: `main` is pushed to the public repo github.com/dcremas/promptpace. Keep host IPs, key
   paths and passwords out of it.
 - **Footer row is eight links** (Main site, Data Viz, SQL Explorer, Weather API, Football SQL,
-  Play Explorer, PromptPace, Recipes), matching `ec2-nginx/prosite_flask/content.py` SITES. The
-  change is merged and pushed in every estate repo; the production deploys are run by the owner
-  (see the last item of the deploy checklist).
+  Play Explorer, PromptPace, Recipes), matching `ec2-nginx/prosite_flask/content.py` SITES. Merged,
+  pushed and deployed on every estate site (2026-09-30).
 - The local dev DB is Postgres `promptpace` (Homebrew); `data/promptpace.db` is the old SQLite
   file and can be deleted.
 
@@ -184,11 +183,13 @@ Full commands are in README.md, "Deploy to EC2 behind nginx".
       reports all 7 agree; the typing and pbp copies are outside it). Merged to `main` and pushed
       in typing, prosite_flask, recipes_flask, restapi_flask, weather-sql-explorer, weblog_flask
       and pbp; ec2-nginx `main` is local only (no remote).
-- [ ] **Deploy the footer change** (owner runs these; auto mode blocks production deploys).
-      Previewed with `rsync -nc` on 2026-09-30: only the expected files change, nothing is
-      deleted. PromptPace needs just `app/static/index.html` (plus README/DEVLOG); `uv.lock` is
-      unchanged, so a restart is enough. prosite needs `--with-viz` because
-      `viz/_prosite_footer.py` changed.
+- [x] **Footer change deployed** (2026-09-30) to all seven apps: typing, prosite (`--with-viz`),
+      recipes, restapi, sql-explorer, the analytics dashboard, and pbp (explorer + /plays/).
+      Previewed first with `rsync -nc` (only the footer files changed; nothing deleted). Verified
+      afterwards: www., recipes., api./docs, typing. and pbp./plays/ all render the eight links,
+      the Streamlit/Bokeh copies on the box carry them, and all 13 services are active.
+      Unrelated finding: the weather-mcp selftest is 60/61, failing "every table carries a
+      description" (a warehouse table without a COMMENT; the deploy didn't touch mcp_server).
 
 ## Environment snapshot (versions verified working)
 
