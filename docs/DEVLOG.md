@@ -168,6 +168,9 @@ Full commands are in README.md, "Deploy to EC2 behind nginx".
       sites. Backups of the earlier versions sit next to it in conf.d as *.bak-* (not loaded).
       Browser check over HTTPS: session saved, History survived a reload, deleted; prod DB empty. Until then HTTP works but History
       doesn't persist, because the cookie is `Secure`.
+- [x] `GRANT promptpace TO dustincremascoli` (2026-09-30), so the owner's pgAdmin login has full
+      access. The app owns its tables (it creates them via migrations), unlike recipes/weatherdata,
+      where dustincremascoli owns the tables and grants the app role access.
 - [ ] Add PromptPace to the "Everything here" footer and nav on the other dustincremascoli.com sites.
 
 ## Environment snapshot (versions verified working)

@@ -131,6 +131,17 @@ sudo chmod 0640 /etc/promptpace/promptpace.env
 unset PW
 ```
 
+To manage the data yourself (e.g. in pgAdmin as your own `dustincremascoli` role), make that
+role a member of `promptpace`. It then has the owner's full rights, including tables the app
+adds later:
+
+```bash
+sudo -u postgres psql -c "GRANT promptpace TO dustincremascoli"
+```
+
+Change table structure through `MIGRATIONS` in `app/storage.py`, not by hand, so the app's
+migration history stays accurate.
+
 `deploy/promptpace.env.example` shows the file's format. The app creates its tables on first
 start. The nightly `pg-backup` job dumps every database, so `promptpace` is backed up with no
 extra setup.
