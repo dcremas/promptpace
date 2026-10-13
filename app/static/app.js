@@ -73,6 +73,7 @@ function resetRecording() {
   setStatus("Waiting for your first keystroke", "idle");
   showError(null);
   updateLive();
+  syncLeaveGuard();
   ui.input.focus();
 }
 
@@ -115,7 +116,29 @@ ui.input.addEventListener("input", (e) => {
   }
   ui.finish.disabled = ui.input.value.trim().length === 0;
   updateLive();
+  syncLeaveGuard();
 });
+
+// Leaving mid-test (a footer link, reload, closing the tab) would throw away the attempt, so the
+// browser asks first, but only while a test is running with text in the box. The listener is
+// attached only while armed: a permanent beforeunload listener keeps some browsers from putting
+// the page in the back/forward cache.
+function testInProgress() {
+  return !state.finished && state.events.length > 0 && ui.input.value.trim().length > 0;
+}
+function onBeforeUnload(e) {
+  if (!testInProgress()) return;
+  e.preventDefault();
+  e.returnValue = "";
+}
+let leaveGuardArmed = false;
+function syncLeaveGuard() {
+  const armed = testInProgress();
+  if (armed === leaveGuardArmed) return;
+  leaveGuardArmed = armed;
+  if (armed) addEventListener("beforeunload", onBeforeUnload);
+  else removeEventListener("beforeunload", onBeforeUnload);
+}
 
 // Enter finishes, like sending a message in an AI chat box; Shift+Enter adds a line break.
 // preventDefault means no input event fires, so the timing still ends at the last real edit.
@@ -159,6 +182,7 @@ async function finish() {
   ui.finish.disabled = true;
   setStatus("Analyzing…", "busy");
   updateLive();
+  syncLeaveGuard();
   try {
     const session = await api("sessions", {
       method: "POST",
@@ -178,6 +202,7 @@ async function finish() {
     ui.finish.disabled = false;
     setStatus("Recording", "recording");
     showError(err);
+    syncLeaveGuard();
   }
 }
 
