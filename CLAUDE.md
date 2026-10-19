@@ -83,7 +83,7 @@ was shown.
 - **Part of dustincremascoli.com.** Lives at typing.dustincremascoli.com (canonical/og:url in
   index.html, `server_name` in deploy/nginx.conf). The footer mirrors the shared footer on the
   owner's other sites (www., sql., recipes., api.): "This site" + "Everything here" lists, ©
-  line, "Produced with the aid of Claude Code's Command Line tools...", GitHub + LinkedIn. If a
+  line, "Produced with the help of Claude Code.", GitHub + LinkedIn. If a
   site is added or renamed, update the "Everything here" list here too. The share image
   app/static/og.png is rendered from docs/og-image.html (command at the top of that file).
 - On touch screens (`hover: none` and `pointer: coarse`) Return is a line break, not finish.
